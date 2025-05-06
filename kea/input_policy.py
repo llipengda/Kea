@@ -1080,7 +1080,7 @@ class NewPolicy(RandomPolicy):
         self.input_manager: "InputManager | None" = None
         self._messages = []
         gpt_url = "https://api.chatanywhere.tech/v1"
-        gpt_key = "sk-G3dXD5UnEjiv1OVxwc5ZnRSFNccp2WiGOp2tJDjLM7WeDW8D"
+        gpt_key = "sk-MNtMNFkJUc6m1zP7pdxeYoqVTWhTLhSyifCXWotpZFPhCAbv"
         self.client = OpenAI(base_url=gpt_url, api_key=gpt_key)
         self._xml1 = ""
         self._xml2 = ""
