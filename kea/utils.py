@@ -11,6 +11,8 @@ import pkg_resources  # TODO: warning pkg_resources has been depreciated
 import yaml
 from typing import Dict
 
+from uiautomator2 import Device
+
 # from test_sample.cal_bounds import D
 
 
@@ -414,3 +416,30 @@ def identify_device_serial(options):
         if len(device_list) > 1:
             raise AttributeError("More than one attached devices, please specify one device serial")
         options.device_serial = device_list[0].strip()
+
+
+import xml.etree.ElementTree as ET
+def get_xml(d: Device):
+    root = ET.fromstring(d.dump_hierarchy())
+
+    flag = False
+    for child in root:
+        for child_child in child:
+            if child_child.attrib['resource-id'] == 'com.android.systemui:id/status_bar_container':
+                root.remove(child)
+                flag = True
+                break
+        if flag:
+            break
+
+    def clean_element(element):
+        for attr in list(element.attrib):
+            if element.attrib[attr] == "" or element.attrib[attr] == "false":
+                del element.attrib[attr]
+        for child in element:
+            clean_element(child)
+
+    clean_element(root)
+
+    res = ET.tostring(root, encoding='unicode')
+    return res
