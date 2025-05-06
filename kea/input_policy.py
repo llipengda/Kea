@@ -1173,11 +1173,15 @@ class NewPolicy(RandomPolicy):
     def process_event(self, event, input_manager):
         if event is not None:
             # self.from_state = self.device.get_current_state()
-            self.device.save_screenshot_for_report(
-                event=event, current_state=self.from_state
-            )
-            input_manager.add_event(event)
-            self.event_count += 1
+            try:
+                self.device.save_screenshot_for_report(
+                    event=event, current_state=self.from_state
+                )
+            except:
+                pass
+            finally:
+                input_manager.add_event(event)
+                self.event_count += 1
         # self.to_state = self.device.get_current_state()
         self.last_event = event
         if self.allow_to_generate_utg:
