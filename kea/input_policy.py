@@ -1087,6 +1087,7 @@ class NewPolicy(RandomPolicy):
         self._in_llm = False
         self._generated_tasks = set()
         self._llm_cnt = 0
+        self._out_cnt = 0
 
     def start(self, input_manager: "InputManager"):
         self.event_count = 0
@@ -1125,10 +1126,9 @@ class NewPolicy(RandomPolicy):
                         event = KillAndRestartAppEvent(app=self.app)
                     self._generated_tasks.clear()
                 else:
-                    event = self.move_the_app_to_foreground_if_needed(self.device.get_current_state())
-                    if event is not None:
-                        pass
-                    elif self._in_llm:
+                    # event = self.move_the_app_to_foreground_if_needed(self.device.get_current_state())
+                    self.move_if_need()
+                    if self._in_llm:
                         if self._llm_cnt > 8:
                             self._llm_cnt = 0
                             event = KeyEvent(name="BACK")
@@ -1430,3 +1430,31 @@ class NewPolicy(RandomPolicy):
         package_names = re.findall(r'ACTIVITY\s+([^\s/]+)/', res)
         self.logger.info("current package name: %s" % package_names[-1])
         return package_names[-1]
+
+    def move_if_need(self):
+        top = self.get_top()
+        self.logger.info("top activity: %s; out cnt: %s" % (top, self._out_cnt))
+        if (top) != self.app.get_package_name():
+            self._in_llm = False
+            self._llm_cnt = 0
+            if (top == 'com.google.android.apps.nexuslauncher'):
+                self.device.adb.shell(self.app.get_start_intent().get_cmd())
+                return
+            self._out_cnt += 1
+            if self._out_cnt > 2:
+                self._out_cnt = 0
+                self.logger.info("move the app to foreground")
+                self.device.u2.press("BACK")
+                time.sleep(1)
+                top = self.get_top()
+                if top != self.app.get_package_name():
+                    if (top != 'com.google.android.apps.nexuslauncher'):
+                        self.device.adb.shell("am force-stop %s" % top)
+                    time.sleep(1)
+                    top = self.get_top()
+                    self.logger.info("now top activity: %s" % top)
+                    if top != self.app.get_package_name():
+                        self.device.adb.shell("am force-stop %s" % self.app.get_package_name())
+                        self.device.adb.shell(self.app.get_start_intent().get_cmd())
+        else:
+            self._out_cnt = 0
