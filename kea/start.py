@@ -63,7 +63,7 @@ def parse_args():
                         help="The file path to target APK")
     parser.add_argument("-o","--output", action="store", dest="output_dir", default="output",
                         help="directory of output")
-    parser.add_argument("-p","--policy", action="store", dest="policy",choices=["random", "guided", "llm"], default=DEFAULT_POLICY,  # tingsu: can we change "mutate" to "guided"?
+    parser.add_argument("-p","--policy", action="store", dest="policy",choices=["random", "guided", "llm", "new"], default=DEFAULT_POLICY,  # tingsu: can we change "mutate" to "guided"?
                         help='Policy used for input event generation. ')
     parser.add_argument("-t", "--timeout", action="store", dest="timeout", default=DEFAULT_TIMEOUT, type=int,
                         help="Timeout in seconds. Default: %d" % DEFAULT_TIMEOUT)
@@ -85,6 +85,8 @@ def parse_args():
                         help="Generate UI transition graph")
     parser.add_argument("-disable_rotate", action="store_true", dest="disable_rotate", default=False,
                         help="Disable rotate event in the testing")
+    parser.add_argument("--limit", action="store", dest="limit", default=100000000, type=int,
+                        help="Limit the number of events to process")
     options = parser.parse_args()
 
     # load the args from the config file `config.yml`
@@ -137,7 +139,6 @@ def load_pdl_driver(settings: "Setting"):
         return Android_PDL_Driver(serial=settings.device_serial)
     
 def start_kea(kea:"Kea", settings:"Setting" = None):
-
     # droidbot is used as the data generator of Kea
     droidbot = DroidBot(    
         app_path=settings.apk_path,
@@ -196,6 +197,7 @@ def main():
                        is_emulator=options.is_emulator,
                        generate_utg=options.generate_utg,
                        is_package=options.is_package,
+                       event_count=options.limit,
                        disable_rotate=options.disable_rotate
                        )
 

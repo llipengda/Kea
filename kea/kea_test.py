@@ -18,7 +18,7 @@ class KeaTest:
     pass
 
 # `d` is the pdl driver for Android or HarmonyOS
-d:Union["Android_PDL_Driver", "HarmonyOS_PDL_Driver", None] = None
+d:Union["Android_PDL_Driver", "HarmonyOS_PDL_Driver"]
 
 def rule() -> Callable:
     """the decorator @rule

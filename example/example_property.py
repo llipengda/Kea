@@ -1,5 +1,6 @@
 from kea import *
 
+
 class Test1(KeaTest):
 
     @initializer()
@@ -16,4 +17,5 @@ class Test1(KeaTest):
     def search_bar_should_exist_after_rotation(self):
         d.rotate('l')
         d.rotate('n')
-        assert d(resourceId="it.feio.android.omninotes.alpha:id/search_src_text").exists()
+        assert d(
+            resourceId="it.feio.android.omninotes.alpha:id/search_src_text").exists()
