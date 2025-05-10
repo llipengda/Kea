@@ -4,6 +4,8 @@ import random
 import copy
 import re
 import time
+
+import requests
 from .utils import Time, generate_report, save_log, RULE_STATE
 from abc import abstractmethod
 from .input_event import (
@@ -18,6 +20,7 @@ from .input_event import (
     KillAppEvent,
     KillAndRestartAppEvent,
     SetTextEvent, Action, U2Event,
+    UIEvent,
 )
 from .utg import UTG
 import json
@@ -57,6 +60,7 @@ POLICY_RANDOM = "random"
 POLICY_NONE = "none"
 POLICY_LLM = "llm"
 POLICY_NEW = "new"
+POLICY_ENHANCE = "enhance"
 
 class InputInterruptedException(Exception):
     pass
@@ -1462,3 +1466,450 @@ class NewPolicy(RandomPolicy):
                         self.device.adb.shell(self.app.get_start_intent().get_cmd())
         else:
             self._out_cnt = 0
+
+class TestContext:
+    def __init__(self):
+        self.stack = []
+        self.variables = {}
+
+    def push_goal(self, goal):
+        self.stack.append({
+            "target": goal,
+            "status": "pending",
+            "dependencies": []
+        })
+
+    def mark_completed(self, goal):
+        for item in self.stack:
+            if item["target"] == goal:
+                item["status"] = "completed"
+
+    def get_current_task(self):
+        return next((item for item in reversed(self.stack)
+                     if item["status"] == "pending"), None)
+
+def encode_image(path):
+    with open(path, "rb") as image_file:
+        import base64
+        return base64.b64encode(image_file.read()).decode("utf-8")
+
+def query_llm(role, content, image_path = None):
+    url = "https://chat.ecnu.edu.cn/open/api/v1/chat/completions"
+    api_key = "sk-b95e8c9a25f444269dad006b9d9fad09"
+
+    if image_path:
+        base64_image = encode_image(image_path)
+        payload = {
+            "messages": [
+                {"role": "system", "content": role},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": content},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]
+                }
+            ],
+            "stream": False,
+            "model": "ecnu-vl"
+        }
+    else:
+        payload = {
+            "messages": [
+                {"role": "system", "content": role},
+                {
+                    "role": "user",
+                    "content": content
+                }],
+            "stream": False,
+            "model": "ecnu-plus"
+        }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+    res = response.json()
+    if 'choices' not in res or 'message' not in res['choices'][0] or 'content' not in res['choices'][0]['message']:
+        print("QUERY LLM ERROR")
+        print(res)
+        time.sleep(3)
+        return None
+    res = response.json()["choices"][0]["message"]["content"]
+
+    return res
+
+def clean_text(text):
+    text = text.replace('“', '"').replace('”', '"').replace("‘", "'").replace("’", "'")
+    text = re.sub(r'[\r\n\t]', '', text)
+    return text
+
+def extract_and_validate_json(text):
+    text = clean_text(text)
+
+    json_match = re.search(r'\{.*\}', text, re.DOTALL)
+    if not json_match:
+        return None
+
+    json_str = json_match.group(0)
+
+    try:
+        result = json.loads(json_str)
+        return result
+    except json.JSONDecodeError:
+        return None
+
+def get_event_str(event, state):
+    if isinstance(event, RotateDevice) or isinstance(event, KeyEvent) or not hasattr(event, "view"):
+        event_str = event.get_event_name()
+    else:
+        view_name = UIEvent.view_short_str(state, event.view)
+        x, y = state.get_view_center(event.view)
+        event_str = f"{event.get_event_name()}({view_name}, x={x}, y={y})"
+    return event_str
+
+MAX_SAME_EVENT_COUNT = 5
+
+class EnhancedNewPolicy(NewPolicy):
+    def __init__(
+            self,
+            device: "Device",
+            app: "App",
+            kea: "Kea" = None,
+            restart_app_after_check_property=False,
+            number_of_events_that_restart_app=100,
+            clear_and_restart_app_data_after_100_events=False,
+            allow_to_generate_utg=False,
+            output_dir: str = None,
+            decay_factor=0.8,
+    ):
+        super(EnhancedNewPolicy, self).__init__(device, app, kea, output_dir=output_dir,
+                                        restart_app_after_check_property=restart_app_after_check_property,
+                                        number_of_events_that_restart_app=number_of_events_that_restart_app,
+                                        clear_and_reinstall_app=clear_and_restart_app_data_after_100_events,
+                                        allow_to_generate_utg=allow_to_generate_utg)
+        self.decay_factor = decay_factor
+        self.init_utg = None
+        self.history = []
+        self.last_state = None
+        self.input_table = {}
+        self.event_table = {}
+        # FIXME True 增强的随机策略 False 全程大模型引导
+        self.random_test = True
+        self.task_stack = TestContext()
+
+    def start(self, input_manager: "InputManager"):
+        if not self.random_test:
+            precond_code = ""
+            for k, v in self.kea.all_rules_DB.items():
+                precond = k.preconditions[0]
+                if hasattr(precond, "__source__"):
+                    precond_code = precond.__source__
+
+            # TODO Maybe too concise to be located for LLM
+            init_task_prompt = f"""You are an expert in mobile app test automation. Convert the given UI element selector into a natural language test precondition statement by following these rules:
+
+    1. Extract the keyword after the last "/" in resourceId
+    2. Paraphrase the keyword into a natural language description while preserving its core meaning
+    3. Describe the expected position or state of the element
+    4. Output the result in natural language, including technical context or clues
+    5. If input is invalid/empty/unparseable, return:
+    "Proceed with free exploration and maximize code coverage"
+    6. Format output as:
+    "The [element_type] for [function] should be [state] [position_context]"
+
+    Input:
+    {precond_code}"""
+
+            init_task = query_llm("You are an expert in mobile app test automation.", init_task_prompt)
+            self.task_stack.push_goal(init_task)
+            self.logger.info(f"init task: {init_task}")
+        
+        self.event_count = 0
+        self.input_manager = input_manager
+        while input_manager.enabled and self.event_count < input_manager.event_count:
+            try:
+                if self.device.is_harmonyos == False and hasattr(self.device, "u2"):
+                    self.device.u2.set_fastinput_ime(True)
+
+                self.logger.info("Exploration action count: %d" % self.event_count)
+
+                if self.to_state is not None:
+                    self.from_state = self.to_state
+                else:
+                    self.from_state = self.device.get_current_state()
+
+                self._xml2 = self._xml1
+                self._xml1 = get_xml(self.device.u2)
+
+                if self.event_count == 0:
+                    event = KillAppEvent(app=self.app)
+                elif self.event_count == 1:
+                    event = IntentEvent(self.app.get_start_intent())
+                elif self.event_count % 600 == 0:
+                    if self.clear_and_reinstall_app:
+                        self.logger.info(
+                            "clear and reinstall app after %s events"
+                            % self.number_of_events_that_restart_app
+                        )
+                        event = ReInstallAppEvent(self.app)
+                    else:
+                        self.logger.info(
+                            "restart app after %s events" % self.number_of_events_that_restart_app
+                        )
+                        event = KillAndRestartAppEvent(app=self.app)
+                    self._generated_tasks.clear()
+                else:
+                    self.move_if_need()
+                    if self._in_llm:
+                        if self._llm_cnt > 8:
+                            self._llm_cnt = 0
+                            event = KeyEvent(name="BACK")
+                            self._in_llm = False
+                        else:
+                            self._llm_cnt += 1
+                            event = self.generate_llm_event()
+                    elif input_manager.sim_calculator.detect(self._xml1, self._xml2):
+                        event = self.generate_llm_event()
+                    else:
+                        event = self.generate_event()
+
+                self.process_event(event, input_manager)
+
+                self.to_state = self.device.get_current_state()
+            except KeyboardInterrupt:
+                break
+            except InputInterruptedException as e:
+                self.logger.info("stop sending events: %s" % e)
+                self.logger.info("action count: %d" % self.event_count)
+                break
+
+            except RuntimeError as e:
+                self.logger.info("RuntimeError: %s, stop sending events" % e)
+                break
+
+            except Exception as e:
+                self.logger.warning("exception during sending events: %s" % e)
+                import traceback
+                traceback.print_exc()
+
+        self.tear_down()
+        
+    def get_weights(self, events, counts, base_weight=1.0):
+        for event, count in counts.items():
+            self.logger.info(f"Event: {event}, Count: {count}")
+        return [base_weight * (self.decay_factor ** counts[event]) for event in events]
+            
+    def generate_event(self):
+        if self.event_count == START_TO_GENERATE_EVENT_IN_POLICY or isinstance(
+                self.last_event, ReInstallAppEvent
+        ):
+            self.run_initializer()
+            self.from_state = self.device.get_current_state()
+        current_state = self.from_state
+        if current_state is None:
+            time.sleep(5)
+            return KeyEvent(name="BACK")
+
+        if self.event_count % self.number_of_events_that_restart_app == 0:
+            if self.clear_and_reinstall_app:
+                self.logger.info(
+                    "clear and reinstall app after %s events"
+                    % self.number_of_events_that_restart_app
+                )
+                return ReInstallAppEvent(self.app)
+            self.logger.info(
+                "restart app after %s events" % self.number_of_events_that_restart_app
+            )
+            return KillAndRestartAppEvent(app=self.app)
+
+        rules_to_check = self.kea.get_rules_whose_preconditions_are_satisfied()
+        for rule_to_check in rules_to_check:
+            self.statistics_of_rules[str(rule_to_check.function.__name__)][
+                RULE_STATE.PRECONDITION_SATISFIED
+            ] += 1
+
+        if len(rules_to_check) > 0:
+            t = self.time_recoder.get_time_duration()
+            self.time_needed_to_satisfy_precondition.append(t)
+            self.logger.debug(
+                "has rule that matches the precondition and the time duration is "
+                + t
+            )
+            if random.random() < 0.5:
+                self.logger.info("Check property")
+                self.check_rule_whose_precondition_are_satisfied()
+                if self.restart_app_after_check_property:
+                    self.logger.debug("restart app after check property")
+                    return KillAppEvent(app=self.app)
+                return None
+            else:
+                self.logger.info("Don't check the property due to the randomness")
+        
+        current_state = self.from_state
+        event = self.move_the_app_to_foreground_if_needed(current_state)
+        if event is not None:
+            self.logger.warning("App is not in foreground, moving to foreground")
+            return event
+
+        # if it is the first time to reach this state, add all possible inputs into the input table
+        if current_state.state_str not in self.input_table:
+            possible_events = current_state.get_possible_input()
+            possible_events.append(KeyEvent(name="BACK"))
+            if not self.disable_rotate:
+                possible_events.append(RotateDevice())
+            self._event_trace += EVENT_FLAG_EXPLORE
+
+            self.input_table[current_state.state_str] = {}
+            self.input_table[current_state.state_str]['checked_time'] = 0
+            self.input_table[current_state.state_str]['events'] = []
+            for event in possible_events:
+                event_str = get_event_str(event, current_state)
+                self.input_table[current_state.state_str]['events'].append(event_str)
+                if event_str not in self.event_table:
+                    self.event_table[event_str] = {
+                        "event": event,
+                        "checked": False,
+                        "tried": 0
+                    }
+
+        if self.random_test:
+            # select an event based on the input table
+            # FIXME Rotate and back should be excluded?
+            counts = {}
+            for event_str in self.input_table[current_state.state_str]['events']:
+                counts[event_str] = self.event_table[event_str]["tried"]
+            weights = self.get_weights(self.input_table[current_state.state_str]['events'], counts)
+            event_str = random.choices(self.input_table[current_state.state_str]['events'], weights=weights, k=1)[0]
+            event = self.event_table[event_str]["event"]
+            self.event_table[event_str]["tried"] += 1
+        else:
+            # use llm to select an event
+            available_inputs = []
+            current_page = current_state.foreground_activity.split(".")[-1]
+            for event_str in self.input_table[current_state.state_str]['events']:
+                if self.event_table[event_str]["tried"] < MAX_SAME_EVENT_COUNT and not self.event_table[event_str]["checked"]:
+                    available_inputs.append({'event_name': event_str, 'tried': self.event_table[event_str]['tried']})
+            available_inputs.sort(key=lambda x: x['tried'])
+
+            history = self.format_action_history(3)
+            has_history = False
+            if history != "":
+                has_history = True
+                history = "\n4. [Action History]: " + history + "\n"
+
+            checked_property_text = "\n5. The target property has already been found in the current UI state; please try exploring other screens or interface states"
+
+            find_path_prompt = f"""Input:
+1. [Target Property]: "{self.task_stack.get_current_task()}"
+2. [Available Actions]: {available_inputs}
+3. [UI Context]: Currently on {current_page} page {history if has_history else ""} {checked_property_text if self.input_table[current_state.state_str]['checked_time'] > 0 else ""}
+
+Task:
+Generate human-like testing decisions following:
+
+Decision Matrix (100pts):
+1. Target relevance (35pts)
+  - Directly matches target properties +20
+  - Indirectly related +15
+2. Exploration efficiency (30pts)
+  - Least-tried path +15
+  - Non-redundant flow +10  
+  - Progressive depth +5
+3. Context coherence (25pts)
+  - Continue current workflow +15
+  - Avoid undo patterns (e.g. back after open) -10*
+4. Innovation (10pts)
+
+Output Requirements:
+{{
+  "selected_event": "event name",
+  "confidence_score": 0.X,
+  "reasoning": "Concise technical justification <50 chars"
+}}"""
+            print(find_path_prompt)
+            response = query_llm("You are a senior mobile app testing strategist specializing in intelligent test path selection", find_path_prompt, self.from_state.get_state_screen())
+            print(f"response: {response}")
+            response_dict = extract_and_validate_json(response)
+            if response_dict is None:
+                self.logger.warning("LLM response is invalid")
+                return None
+            self.history.append(response_dict)
+
+            selected_action = response_dict["selected_event"]
+            if selected_action not in self.event_table:
+                self.logger.warning("Selected action is not in the event table")
+                return None
+
+            event = self.event_table[selected_action]["event"]
+            self.event_table[selected_action]["tried"] += 1
+
+        if isinstance(event, RotateDevice):
+            if self.last_rotate_events == KEY_RotateDeviceToPortraitEvent:
+                self.last_rotate_events = KEY_RotateDeviceToLandscapeEvent
+                event = RotateDeviceToLandscapeEvent()
+            else:
+                self.last_rotate_events = KEY_RotateDeviceToPortraitEvent
+                event = RotateDeviceToPortraitEvent()
+
+        return event
+
+    def format_action_history(self, n=3):
+        return ";".join(
+            f"{i+1}. {a['selected_event'][:35]} ({a['reasoning'][:50]})"
+            for i, a in enumerate(self.history[-n:])
+        )
+
+    def generate_llm_event(self):
+        # This method is overridden to validate the LLM response
+        if self._in_llm:
+            self.action_prompt3()
+            self.llm()
+            self.check_prompt()
+            response = extract_and_validate_json(str(self.llm().content))
+            if response is None:
+                self.logger.warning("LLM response is invalid")
+                return None
+            act = Action(**json.loads(response))
+            self._in_llm = act.hasNext
+            return U2Event(act)
+        self._messages = []
+        self.meaning_prompt()
+        self.llm()
+        self.action_prompt1()
+        res = self.llm().content
+        self._generated_tasks.add(res.split('\n')[0])
+        self.action_prompt2()
+        self.llm()
+        self.check_prompt()
+        response = extract_and_validate_json(str(self.llm().content))
+        if response is None:
+            self.logger.warning("LLM response is invalid")
+            return None
+        act = Action(**json.loads(response))
+        self._in_llm = act.hasNext
+        return U2Event(act)
+
+    def action_prompt2(self):
+        # This method is overridden to support swipe actions
+        prompt = """Please describe the **first step** of the operation you just performed in JSON format, as shown below:
+    {
+        "action": "input_text",
+        "selectors": {"resourceId": "com.example:id/input", "text": "password"},
+        "inputText": "123456",
+        "hasNext": true,
+        "direction": "left"
+    }
+    Notes:
+    - The "action" must be one of: click, long_click, input_text, press_enter, swipe
+    - "selectors" can only include: **text**, **className**, **description**, **resourceId**, and must be in camelCase. You can not use other selectors.
+    - The value is the value of the selector, which must be found in the previous XML
+    - "inputText" is the text to input, only present when the action is input_text
+    - "hasNext" is a boolean indicating whether there is a next step. Set it to false if there is no next step
+    - "direction" is the direction of the swipe, only present when the action is swipe. It can be "left", "right", "up", or "down".
+    Try to combine multiple selectors to uniquely identify the element.
+    Please return the operation in JSON format only. Do not explain or use code blocks.
+    """
+        self._messages.append({"role": "user", "content": prompt})
