@@ -1872,7 +1872,7 @@ Output Requirements:
             if response is None:
                 self.logger.warning("LLM response is invalid")
                 return None
-            act = Action(**json.loads(response))
+            act = Action(**response)
             self._in_llm = act.hasNext
             return U2Event(act)
         self._messages = []
@@ -1888,7 +1888,7 @@ Output Requirements:
         if response is None:
             self.logger.warning("LLM response is invalid")
             return None
-        act = Action(**json.loads(response))
+        act = Action(**response)
         self._in_llm = act.hasNext
         return U2Event(act)
 
