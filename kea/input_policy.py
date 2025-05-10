@@ -1588,7 +1588,7 @@ class EnhancedNewPolicy(NewPolicy):
         super(EnhancedNewPolicy, self).__init__(device, app, kea, output_dir=output_dir,
                                         restart_app_after_check_property=restart_app_after_check_property,
                                         number_of_events_that_restart_app=number_of_events_that_restart_app,
-                                        clear_and_reinstall_app=clear_and_restart_app_data_after_100_events,
+                                        clear_and_restart_app_data_after_100_events=clear_and_restart_app_data_after_100_events,
                                         allow_to_generate_utg=allow_to_generate_utg)
         self.decay_factor = decay_factor
         self.init_utg = None
