@@ -56,7 +56,8 @@ class DroidBot(object):
         is_package=False,
         generate_utg=False,
         disable_rotate=False,
-        settings:"Setting"=None
+        settings:"Setting"=None,
+        decay_factor=0.8,
     ):
         """
         initiate droidbot with configurations
@@ -126,6 +127,7 @@ class DroidBot(object):
         self.generate_utg = generate_utg
         self.disable_rotate = disable_rotate
         self.settings = settings
+        self.decay_factor = decay_factor
         try:
             self.init_droidbot(is_harmonyos)
         except Exception:
@@ -173,7 +175,8 @@ class DroidBot(object):
                 generate_utg=self.generate_utg,
                 output_dir=self.output_dir,
                 is_package=self.is_package,
-                disable_rotate=self.disable_rotate
+                disable_rotate=self.disable_rotate,
+                decay_factor=self.decay_factor,
             )
             # self.send_documents()
         # initializer for HarmonyOS system

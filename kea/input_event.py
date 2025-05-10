@@ -587,6 +587,21 @@ class UIEvent(InputEvent):
             choices = {TouchEvent: 6, LongTouchEvent: 2, SwipeEvent: 2}
             event_type = utils.weighted_choice(choices)
             return event_type.get_random_instance(device, app)
+        
+    @staticmethod
+    def view_short_str(state, view):
+        view_class = view['class'].split('.')[-1]
+        view_text = (
+            view['text'].replace('\n', '\\n') if 'text' in view and view['text'] else ''
+        )
+        view_text = view_text[:20] if len(view_text) > 20 else view_text
+        view_id = (
+            view['resource_id'].replace('\n', '\\n').split('/')[-1]
+            if 'resource_id' in view and view['resource_id']
+            else ''
+        )
+        view_short_sig = f'{state.activity_short_name}/{view_class}-{view_text}-{view_id}'
+        return f"{view_short_sig}"
 
     @staticmethod
     def get_xy(x, y, view):
@@ -1083,11 +1098,12 @@ Selector = Literal['text', 'className',
                       'description', 'resourceId', 'index', 'instance']
 
 class Action:
-    def __init__(self, action: str, selectors: dict[str,str], inputText: str | None = None, hasNext: bool = False):
+    def __init__(self, action: str, selectors: dict[str,str], inputText: str | None = None, hasNext: bool = False, direction: str = "right"):
         self.action = str(action)
         self.selectors = selectors
         self.inputText = inputText
         self.hasNext = hasNext
+        self.direction = direction
 
     def to_dict(self):
         return {
@@ -1107,7 +1123,8 @@ class Action:
         selectors = action_dict.get('selectors', {})
         inputText = action_dict.get('inputText', None)
         hasNext = action_dict.get('hasNext', None)
-        return Action(action, selectors, inputText, hasNext)
+        direction = action_dict.get('direction', "right")
+        return Action(action, selectors, inputText, hasNext, direction)
 
 
 class U2Event(InputEvent):
@@ -1124,13 +1141,15 @@ class U2Event(InputEvent):
         }
         match action.action:
             case 'click':
-                d(**kwargs).click(timeout=0)
+                d(**kwargs).click(timeout=1)
             case 'long_click':
-                d(**kwargs).long_click(timeout=0)
+                d(**kwargs).long_click(timeout=1)
             case 'input_text':
-                d(**kwargs).set_text(action.inputText, timeout=0)
+                d(**kwargs).set_text(action.inputText, timeout=1)
             case 'press_enter':
                 d.press('enter')
+            case 'swipe':
+                d(**kwargs).swipe()
             case _:
                 raise ValueError(f"Unsupported action: {action.action}")
 

@@ -5,8 +5,8 @@ env: Linux
 system: android
 device: emulator-5554
 app_path: example/omninotes.apk
-policy: random
-count: 100
+policy: enhance
+limit: 100
 properties: 
   - example/example_property.py
 
