@@ -1067,13 +1067,15 @@ class NewPolicy(RandomPolicy):
             number_of_events_that_restart_app=100,
             clear_and_restart_app_data_after_100_events=False,
             allow_to_generate_utg=False,
+            disable_rotate=False,
             output_dir: str = None,
     ):
         super(NewPolicy, self).__init__(device, app, kea, output_dir=output_dir,
                                         restart_app_after_check_property=restart_app_after_check_property,
                                         number_of_events_that_restart_app=number_of_events_that_restart_app,
                                         clear_and_reinstall_app=clear_and_restart_app_data_after_100_events,
-                                        allow_to_generate_utg=allow_to_generate_utg)
+                                        allow_to_generate_utg=allow_to_generate_utg,
+                                        disable_rotate=disable_rotate)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.output_dir = output_dir
         save_log(self.logger, self.output_dir)
@@ -1334,7 +1336,11 @@ class NewPolicy(RandomPolicy):
         prompt = f"""If you were the user, what would you do on this page? You can only describe one action. 
     Please try to generate tasks that have not been generated before. Below are the tasks that have already been generated:
     {list(self._generated_tasks)}
-    Please list the steps required to complete this action. (This action will be named 'The Task')"""
+    Please list the steps required to complete this action. (This action will be named 'The Task')
+    Note: You can directly input text to an input box, without clicking it first.
+    Note: If there is a drawer, navigate by it might be a good choice.
+    DONT GENERATE A TASK THAT MAY LEAVE THE APP.
+    """
 
         self._messages.append({"role": "user", "content": prompt})
 
@@ -1374,6 +1380,8 @@ class NewPolicy(RandomPolicy):
     - The selectors must be found in the XML.
     - The selectors must uniquely identify the element.
     If there are no issues, output it as is; otherwise, modify it accordingly.
+    Output in JSON format only, with explanations as a new field "explanation".
+    Don't use code blocks.
     """
         self._messages.append({"role": "user", "content": prompt})
 

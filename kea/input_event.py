@@ -1083,7 +1083,7 @@ Selector = Literal['text', 'className',
                       'description', 'resourceId', 'index', 'instance']
 
 class Action:
-    def __init__(self, action: str, selectors: dict[str,str], inputText: str | None = None, hasNext: bool = False):
+    def __init__(self, action: str, selectors: dict[str,str], inputText: str | None = None, hasNext: bool = False, **kwargs):
         self.action = str(action)
         self.selectors = selectors
         self.inputText = inputText
