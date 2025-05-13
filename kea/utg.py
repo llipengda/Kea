@@ -103,8 +103,6 @@ class UTG(object):
         ] = {"event": event, "id": self.effective_event_count}
 
         self.last_state = new_state
-        if output:
-            self.__output_utg()
     
     def finish(self):
         """
