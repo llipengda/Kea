@@ -101,7 +101,7 @@ class InputManager(object):
         elif self.policy_name == POLICY_LLM:
             input_policy = LLMPolicy(device, app, kea=self.kea, number_of_events_that_restart_app = self.number_of_events_that_restart_app, clear_and_restart_app_data_after_100_events=True, allow_to_generate_utg = self.generate_utg, output_dir=self.output_dir)
         elif self.policy_name == POLICY_NEW:
-            input_policy = NewPolicy(device, app, kea=self.kea, number_of_events_that_restart_app = self.number_of_events_that_restart_app, clear_and_restart_app_data_after_100_events=True, allow_to_generate_utg = self.generate_utg, output_dir=self.output_dir)
+            input_policy = NewPolicy(device, app, kea=self.kea, number_of_events_that_restart_app = self.number_of_events_that_restart_app, clear_and_restart_app_data_after_100_events=True, allow_to_generate_utg = self.generate_utg, output_dir=self.output_dir, disable_rotate=self.disable_rotate)
         elif self.policy_name == POLICY_ENHANCE:
             input_policy = EnhancedNewPolicy(
                 device,
@@ -112,6 +112,7 @@ class InputManager(object):
                 allow_to_generate_utg=self.generate_utg,
                 output_dir=self.output_dir,
                 decay_factor=self.decay_factor,
+                disable_rotate=self.disable_rotate,
             )
         else:
             self.logger.warning(

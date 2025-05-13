@@ -1098,7 +1098,7 @@ Selector = Literal['text', 'className',
                       'description', 'resourceId', 'index', 'instance']
 
 class Action:
-    def __init__(self, action: str, selectors: dict[str,str], inputText: str | None = None, hasNext: bool = False, direction: str = "right"):
+    def __init__(self, action: str, selectors: dict[str,str], inputText: str | None = None, hasNext: bool = False, direction: str = "right", **kwargs):
         self.action = str(action)
         self.selectors = selectors
         self.inputText = inputText
@@ -1141,15 +1141,15 @@ class U2Event(InputEvent):
         }
         match action.action:
             case 'click':
-                d(**kwargs).click(timeout=1)
+                d(**kwargs).click()
             case 'long_click':
-                d(**kwargs).long_click(timeout=1)
+                d(**kwargs).long_click()
             case 'input_text':
-                d(**kwargs).set_text(action.inputText, timeout=1)
+                d(**kwargs).set_text(action.inputText)
             case 'press_enter':
                 d.press('enter')
             case 'swipe':
-                d(**kwargs).swipe()
+                d(**kwargs).swipe(action.direction)
             case _:
                 raise ValueError(f"Unsupported action: {action.action}")
 

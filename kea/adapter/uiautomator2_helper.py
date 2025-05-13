@@ -141,8 +141,14 @@ class Uiautomator2_Helper:
         """
         # get the xml file of the current view
         xml = self.u2.dump_hierarchy()
+        
+        if not xml:
+            return {}
         # select the target root node from the xml file
         view_tree = self.select_target_root_node(xml)
+        if view_tree is None:
+            return {}
+        
         # convert the xml file to dict
         view_tree = self.xml_to_dict(view_tree)
         

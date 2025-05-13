@@ -1057,9 +1057,12 @@ class Device(object):
         current_state = None
         try:
             views = self.get_views()
+            if views is None:
+                self.logger.warning("Failed to get views!")
+                return self.get_last_known_state()
             foreground_activity = self.get_top_activity_name()
             activity_stack = self.get_current_activity_stack()
-            background_services = self.get_service_names()
+            background_services = self.get_service_names()  
             screenshot_path = self.take_screenshot()
             self.screenshot_path = screenshot_path
             self.logger.debug("finish getting current device state...")

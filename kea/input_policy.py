@@ -1071,13 +1071,15 @@ class NewPolicy(RandomPolicy):
             number_of_events_that_restart_app=100,
             clear_and_restart_app_data_after_100_events=False,
             allow_to_generate_utg=False,
+            disable_rotate=False,
             output_dir: str = None,
     ):
         super(NewPolicy, self).__init__(device, app, kea, output_dir=output_dir,
                                         restart_app_after_check_property=restart_app_after_check_property,
                                         number_of_events_that_restart_app=number_of_events_that_restart_app,
                                         clear_and_reinstall_app=clear_and_restart_app_data_after_100_events,
-                                        allow_to_generate_utg=allow_to_generate_utg)
+                                        allow_to_generate_utg=allow_to_generate_utg,
+                                        disable_rotate=disable_rotate)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.output_dir = output_dir
         save_log(self.logger, self.output_dir)
@@ -1107,6 +1109,8 @@ class NewPolicy(RandomPolicy):
                     self.from_state = self.to_state
                 else:
                     self.from_state = self.device.get_current_state()
+                
+                self.device.from_state = self.from_state
 
                 self._xml2 = self._xml1
                 self._xml1 = get_xml(self.device.u2)
@@ -1155,7 +1159,6 @@ class NewPolicy(RandomPolicy):
 
                 self.process_event(event, input_manager)
 
-                self.to_state = self.device.get_current_state()
             except KeyboardInterrupt:
                 break
             except InputInterruptedException as e:
@@ -1176,18 +1179,19 @@ class NewPolicy(RandomPolicy):
 
     def process_event(self, event, input_manager):
         if event is not None:
-            # self.from_state = self.device.get_current_state()
             try:
                 self.device.save_screenshot_for_report(
                     event=event, current_state=self.from_state
                 )
             except:
-                pass
+                self.from_state = self.device.get_current_state()
+                self.device.save_screenshot_for_report(event=event, current_state=self.from_state)
             finally:
                 input_manager.add_event(event)
                 self.event_count += 1
-        # self.to_state = self.device.get_current_state()
+        
         self.last_event = event
+        self.to_state = self.device.get_current_state()
         if self.allow_to_generate_utg:
             self.update_utg()
         bug_report_path = os.path.join(self.device.output_dir, "all_states")
@@ -1338,7 +1342,11 @@ class NewPolicy(RandomPolicy):
         prompt = f"""If you were the user, what would you do on this page? You can only describe one action. 
     Please try to generate tasks that have not been generated before. Below are the tasks that have already been generated:
     {list(self._generated_tasks)}
-    Please list the steps required to complete this action. (This action will be named 'The Task')"""
+    Please list the steps required to complete this action. (This action will be named 'The Task')
+    Note: You can directly input text to an input box, without clicking it first.
+    Note: If there is a drawer, navigate by it might be a good choice.
+    DONT GENERATE A TASK THAT MAY LEAVE THE APP.
+    """
 
         self._messages.append({"role": "user", "content": prompt})
 
@@ -1378,6 +1386,8 @@ class NewPolicy(RandomPolicy):
     - The selectors must be found in the XML.
     - The selectors must uniquely identify the element.
     If there are no issues, output it as is; otherwise, modify it accordingly.
+    Output in JSON format only, with explanations as a new field "explanation".
+    Don't use code blocks.
     """
         self._messages.append({"role": "user", "content": prompt})
 
@@ -1584,12 +1594,13 @@ class EnhancedNewPolicy(NewPolicy):
             allow_to_generate_utg=False,
             output_dir: str = None,
             decay_factor=0.8,
+            disable_rotate=False,
     ):
         super(EnhancedNewPolicy, self).__init__(device, app, kea, output_dir=output_dir,
                                         restart_app_after_check_property=restart_app_after_check_property,
                                         number_of_events_that_restart_app=number_of_events_that_restart_app,
                                         clear_and_restart_app_data_after_100_events=clear_and_restart_app_data_after_100_events,
-                                        allow_to_generate_utg=allow_to_generate_utg)
+                                        allow_to_generate_utg=allow_to_generate_utg, disable_rotate=disable_rotate)
         self.decay_factor = decay_factor
         self.init_utg = None
         self.history = []
@@ -1598,7 +1609,8 @@ class EnhancedNewPolicy(NewPolicy):
         self.event_table = {}
         # FIXME True 增强的随机策略 False 全程大模型引导
         self.random_test = True
-        self.task_stack = TestContext()
+        if not self.random_test:
+            self.task_stack = TestContext()
 
     def start(self, input_manager: "InputManager"):
         if not self.random_test:
@@ -1640,6 +1652,8 @@ class EnhancedNewPolicy(NewPolicy):
                     self.from_state = self.to_state
                 else:
                     self.from_state = self.device.get_current_state()
+                    
+                self.device.from_state = self.from_state
 
                 self._xml2 = self._xml1
                 self._xml1 = get_xml(self.device.u2)
@@ -1678,7 +1692,6 @@ class EnhancedNewPolicy(NewPolicy):
 
                 self.process_event(event, input_manager)
 
-                self.to_state = self.device.get_current_state()
             except KeyboardInterrupt:
                 break
             except InputInterruptedException as e:
@@ -1695,11 +1708,22 @@ class EnhancedNewPolicy(NewPolicy):
                 import traceback
                 traceback.print_exc()
 
+        if self.allow_to_generate_utg:
+            self.utg.finish()
+        self.logger.info("Exploration action count: %d" % self.event_count)
+        self.logger.info("Exploration finished")
+        bug_report_path = os.path.join(self.device.output_dir, "all_states")
+        generate_report(
+            bug_report_path,
+            self.device.output_dir,
+            self.triggered_bug_information,
+            self.time_needed_to_satisfy_precondition,
+            self.device.cur_event_count,
+            self.time_recoder.get_time_duration(),
+        )
         self.tear_down()
         
     def get_weights(self, events, counts, base_weight=1.0):
-        for event, count in counts.items():
-            self.logger.info(f"Event: {event}, Count: {count}")
         return [base_weight * (self.decay_factor ** counts[event]) for event in events]
             
     def generate_event(self):
@@ -1749,11 +1773,6 @@ class EnhancedNewPolicy(NewPolicy):
                 self.logger.info("Don't check the property due to the randomness")
         
         current_state = self.from_state
-        event = self.move_the_app_to_foreground_if_needed(current_state)
-        if event is not None:
-            self.logger.warning("App is not in foreground, moving to foreground")
-            return event
-
         # if it is the first time to reach this state, add all possible inputs into the input table
         if current_state.state_str not in self.input_table:
             possible_events = current_state.get_possible_input()
@@ -1777,10 +1796,14 @@ class EnhancedNewPolicy(NewPolicy):
 
         if self.random_test:
             # select an event based on the input table
-            # FIXME Rotate and back should be excluded?
             counts = {}
             for event_str in self.input_table[current_state.state_str]['events']:
-                counts[event_str] = self.event_table[event_str]["tried"]
+                # FIXME Rotate and back should be excluded?
+                if event_str.startswith("RotateDevice") or event_str.startswith("KeyEvent"):
+                    # 0.8 ** 7 = 0.2097152
+                    counts[event_str] = 7
+                else:
+                    counts[event_str] = self.event_table[event_str]["tried"]
             weights = self.get_weights(self.input_table[current_state.state_str]['events'], counts)
             event_str = random.choices(self.input_table[current_state.state_str]['events'], weights=weights, k=1)[0]
             event = self.event_table[event_str]["event"]
@@ -1861,6 +1884,24 @@ Output Requirements:
             f"{i+1}. {a['selected_event'][:35]} ({a['reasoning'][:50]})"
             for i, a in enumerate(self.history[-n:])
         )
+        
+    def process_event(self, event, input_manager):
+        if event is not None:
+            try:
+                self.device.save_screenshot_for_report(
+                    event=event, current_state=self.from_state
+                )
+            except:
+                self.from_state = self.device.get_current_state()
+                self.device.save_screenshot_for_report(event=event, current_state=self.from_state)
+            finally:
+                input_manager.add_event(event)
+                self.event_count += 1
+        
+        self.last_event = event
+        self.to_state = self.device.get_current_state()
+        if self.allow_to_generate_utg:
+            self.update_utg()
 
     def generate_llm_event(self):
         # This method is overridden to validate the LLM response
@@ -1912,4 +1953,32 @@ Output Requirements:
     Try to combine multiple selectors to uniquely identify the element.
     Please return the operation in JSON format only. Do not explain or use code blocks.
     """
-        self._messages.append({"role": "user", "content": prompt})
+        self._messages.append({"role": "user", "content": prompt}) 
+
+    def move_if_need(self):
+        top = self.from_state.foreground_activity
+        self.logger.info("top activity: %s; out cnt: %s; app: %s" % (top, self._out_cnt, self.app.get_package_name()))
+        if (top) != self.app.get_package_name():
+            self._in_llm = False
+            self._llm_cnt = 0
+            if (top == 'com.google.android.apps.nexuslauncher'):
+                self.device.adb.shell(self.app.get_start_intent().get_cmd())
+                return
+            self._out_cnt += 1
+            if self._out_cnt > 2:
+                self._out_cnt = 0
+                self.logger.info("move the app to foreground")
+                self.device.u2.press("BACK")
+                time.sleep(0.2)
+                top = self.get_top()
+                if top != self.app.get_package_name():
+                    if (top != 'com.google.android.apps.nexuslauncher'):
+                        self.device.adb.shell("am force-stop %s" % top)
+                    time.sleep(0.2)
+                    top = self.get_top()
+                    self.logger.info("now top activity: %s" % top)
+                    if top != self.app.get_package_name():
+                        self.device.adb.shell("am force-stop %s" % self.app.get_package_name())
+                        self.device.adb.shell(self.app.get_start_intent().get_cmd())
+        else:
+            self._out_cnt = 0
