@@ -124,18 +124,7 @@ class InputPolicy(object):
                 #     self.device.u2.set_fastinput_ime(True)
 
                 self.logger.info("Exploration event count: %d", self.event_count)
-                self.logger.info("Exploration event count: %d", self.event_count)
-
-                if self.to_state is not None:
-                    self.from_state = self.to_state
-                else:
-                    self.from_state = self.device.get_current_state()
                 
-                # set the from_state to droidbot to let the pdl get the state
-                self.device.from_state = self.from_state
-                
-                if self.event_count == 0:
-                    # If the application is running, close the application.
                 if self.to_state is not None:
                     self.from_state = self.to_state
                 else:
@@ -924,7 +913,6 @@ class LLMPolicy(RandomPolicy):
         event = None
 
         if event is None:
-            event = self.generate_llm_event_based_on_utg()
             event = self.generate_llm_event_based_on_utg()
 
         if isinstance(event, RotateDevice):
