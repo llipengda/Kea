@@ -84,3 +84,5 @@ kea_venv/
 
 # locales backup
 _locales/
+
+.env

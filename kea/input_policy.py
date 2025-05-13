@@ -4,6 +4,8 @@ import random
 import copy
 import re
 import time
+
+from dotenv import load_dotenv
 from .utils import Time, generate_report, save_log, RULE_STATE
 from abc import abstractmethod
 from .input_event import (
@@ -57,6 +59,17 @@ POLICY_RANDOM = "random"
 POLICY_NONE = "none"
 POLICY_LLM = "llm"
 POLICY_NEW = "new"
+
+load_dotenv()
+
+GPT_KEY = os.getenv("GPT_KEY")
+GPT_URL = os.getenv("GPT_URL")
+
+if not GPT_KEY or not GPT_URL:
+    logging.warning("Environment variables GPT_KEY and GPT_URL are not set. ")
+else:
+    print(GPT_KEY)
+    print(GPT_URL)
 
 class InputInterruptedException(Exception):
     pass
@@ -996,8 +1009,8 @@ class LLMPolicy(RandomPolicy):
         # TODO: replace with your own LLM
         from openai import OpenAI
 
-        gpt_url = "REMOVED"
-        gpt_key = "REMOVED"
+        gpt_url = GPT_URL
+        gpt_key = GPT_KEY
         client = OpenAI(base_url=gpt_url, api_key=gpt_key)
 
         messages = [{"role": "user", "content": prompt}]
@@ -1081,8 +1094,8 @@ class NewPolicy(RandomPolicy):
         save_log(self.logger, self.output_dir)
         self.input_manager: "InputManager | None" = None
         self._messages = []
-        gpt_url = "REMOVED"
-        gpt_key = "REMOVED"
+        gpt_url = GPT_URL
+        gpt_key = GPT_KEY
         self.client = OpenAI(base_url=gpt_url, api_key=gpt_key)
         self._xml1 = ""
         self._xml2 = ""
