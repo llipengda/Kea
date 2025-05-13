@@ -88,6 +88,8 @@ KEY_KillAppEvent = "kill_app"
 KEY_RotateDeviceToLandscapeEvent = "rotate_device_right"
 KEY_RotateDeviceToPortraitEvent = "rotate_device_neutral"
 
+KEY_U2Event = "u2_event"
+
 class InvalidEventException(Exception):
     pass
 
@@ -585,6 +587,21 @@ class UIEvent(InputEvent):
             choices = {TouchEvent: 6, LongTouchEvent: 2, SwipeEvent: 2}
             event_type = utils.weighted_choice(choices)
             return event_type.get_random_instance(device, app)
+        
+    @staticmethod
+    def view_short_str(state, view):
+        view_class = view['class'].split('.')[-1]
+        view_text = (
+            view['text'].replace('\n', '\\n') if 'text' in view and view['text'] else ''
+        )
+        view_text = view_text[:20] if len(view_text) > 20 else view_text
+        view_id = (
+            view['resource_id'].replace('\n', '\\n').split('/')[-1]
+            if 'resource_id' in view and view['resource_id']
+            else ''
+        )
+        view_short_sig = f'{state.activity_short_name}/{view_class}-{view_text}-{view_id}'
+        return f"{view_short_sig}"
 
     @staticmethod
     def get_xy(x, y, view):
@@ -1074,6 +1091,83 @@ class SpawnEvent(InputEvent):
     def get_event_str(self, state):
         return "%s()" % self.__class__.__name__
 
+from dataclasses import dataclass
+from typing import Literal, Optional
+
+Selector = Literal['text', 'className',
+                      'description', 'resourceId', 'index', 'instance']
+
+class Action:
+    def __init__(self, action: str, selectors: dict[str,str], inputText: str | None = None, hasNext: bool = False, direction: str = "right", **kwargs):
+        self.action = str(action)
+        self.selectors = selectors
+        self.inputText = inputText
+        self.hasNext = hasNext
+        self.direction = direction
+
+    def to_dict(self):
+        return {
+            'action': self.action,
+            'selectors': self.selectors,
+            'inputText': self.inputText,
+            'hasNext': self.hasNext
+        }
+
+    @staticmethod
+    def from_dict(action_dict):
+        if not isinstance(action_dict, dict):
+            return None
+        if 'action' not in action_dict:
+            return None
+        action = action_dict['action']
+        selectors = action_dict.get('selectors', {})
+        inputText = action_dict.get('inputText', None)
+        hasNext = action_dict.get('hasNext', None)
+        direction = action_dict.get('direction', "right")
+        return Action(action, selectors, inputText, hasNext, direction)
+
+
+class U2Event(InputEvent):
+    def __init__(self, action: Action):
+        super().__init__()
+        self.event_type = KEY_U2Event
+        self._action = action
+
+    def send(self, device):
+        d = device.u2
+        action = self._action
+        kwargs = {
+            **action.selectors
+        }
+        match action.action:
+            case 'click':
+                d(**kwargs).click()
+            case 'long_click':
+                d(**kwargs).long_click()
+            case 'input_text':
+                d(**kwargs).set_text(action.inputText)
+            case 'press_enter':
+                d.press('enter')
+            case 'swipe':
+                d(**kwargs).swipe(action.direction)
+            case _:
+                raise ValueError(f"Unsupported action: {action.action}")
+
+    def get_event_name(self):
+        return self._action.action
+
+    def get_event_str(self, state):
+        return "%s(%s(%s))" % (self.__class__.__name__, self._action.action, self._action.selectors)
+
+    def to_dict(self):
+        return self.__dict__
+
+    def to_json(self):
+        return json.dumps(self.to_dict())
+
+    def __str__(self):
+        return self.to_dict().__str__()
+
 
 EVENT_TYPES = {
     KEY_KeyEvent: KeyEvent,
@@ -1083,4 +1177,5 @@ EVENT_TYPES = {
     KEY_ScrollEvent: ScrollEvent,
     KEY_IntentEvent: IntentEvent,
     KEY_SpawnEvent: SpawnEvent,
+    KEY_U2Event: U2Event,
 }

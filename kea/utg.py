@@ -103,7 +103,18 @@ class UTG(object):
         ] = {"event": event, "id": self.effective_event_count}
 
         self.last_state = new_state
-        self.__output_utg()
+    
+    def finish(self):
+        """
+        finish the UTG
+        """
+        if self.first_state is None:
+            self.first_state = self.last_state
+        if self.last_state is None:
+            self.last_state = self.first_state
+
+        if self.device.output_dir:
+            self.__output_utg()
 
     def remove_transition(self, event, old_state, new_state):
         event_str = event.get_event_str(old_state)
