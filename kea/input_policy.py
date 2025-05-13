@@ -1915,6 +1915,9 @@ Output Requirements:
         self.to_state = self.device.get_current_state()
         if self.allow_to_generate_utg:
             self.update_utg()
+            
+    def update_utg(self):
+        self.utg.add_transition(self.last_event, self.from_state, self.to_state, False)
 
     def generate_llm_event(self):
         # This method is overridden to validate the LLM response

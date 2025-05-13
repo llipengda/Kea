@@ -62,7 +62,7 @@ class UTG(object):
         self.G.clear()
         self.G2.clear()
 
-    def add_transition(self, event, old_state, new_state):
+    def add_transition(self, event, old_state, new_state, output=True):
         self.add_node(old_state,event)
         self.add_node(new_state)
 
@@ -103,6 +103,8 @@ class UTG(object):
         ] = {"event": event, "id": self.effective_event_count}
 
         self.last_state = new_state
+        if output:
+            self.__output_utg()
     
     def finish(self):
         """
