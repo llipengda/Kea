@@ -1789,6 +1789,8 @@ class EnhancedNewPolicy(NewPolicy):
         # if it is the first time to reach this state, add all possible inputs into the input table
         if current_state.state_str not in self.input_table:
             possible_events = current_state.get_possible_input()
+            while len(possible_events) == 0:
+                possible_events = current_state.get_possible_input()
             possible_events.append(KeyEvent(name="BACK"))
             if not self.disable_rotate:
                 possible_events.append(RotateDevice())
