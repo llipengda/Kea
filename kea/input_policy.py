@@ -1790,6 +1790,7 @@ class EnhancedNewPolicy(NewPolicy):
         if current_state.state_str not in self.input_table:
             possible_events = current_state.get_possible_input()
             while len(possible_events) == 0:
+                time.sleep(1)
                 possible_events = current_state.get_possible_input()
             possible_events.append(KeyEvent(name="BACK"))
             if not self.disable_rotate:
