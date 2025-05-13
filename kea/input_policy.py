@@ -1791,7 +1791,7 @@ class EnhancedNewPolicy(NewPolicy):
         
         current_state = self.from_state
         # if it is the first time to reach this state, add all possible inputs into the input table
-        if current_state.state_str not in self.input_table:
+        if current_state.state_str not in self.input_table or random.random() < 0.5:
             possible_events = current_state.get_possible_input()
             while len(possible_events) == 0:
                 time.sleep(1)
