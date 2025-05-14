@@ -883,7 +883,10 @@ class Device(object):
         else:
             self.current_state = current_state
 
-        self.save_to_filtered_dir(self.screenshot_path, self.current_state)
+        try:
+            self.save_to_filtered_dir(self.screenshot_path, self.current_state)
+        except Exception as e:
+            self.logger.warning(f"Exception when saving filtered dir: {e}")
         self.save_to_all_states_dir(self.screenshot_path, event_name=event_name, event=event)
     
     def save_to_filtered_dir(self, screenshot_path, current_state: "DeviceState"):
@@ -897,6 +900,10 @@ class Device(object):
             os.makedirs(filtered_widgets_path)
         
         covered_widgets = current_state.get_covered_widgets()
+        
+        if not os.path.exists(screenshot_path):
+            self.logger.warning("Screenshot path does not exist: %s" % screenshot_path)
+            return
 
         image = cv2.imread(screenshot_path)
         covered_widget_info = []
@@ -906,6 +913,10 @@ class Device(object):
             cv2.rectangle(image, pt1, pt2, COLOR.GREEN, 3)
             # collect and save the covered widgets info.
             covered_widget_info.append(covered_widget["signature"])
+            
+        if image is None:
+            self.logger.warning("Image is None, cannot save screenshot.")
+            return
         
         # save the screenshot with covered rectangles
         dest_screenshot_path = "%s/screen_%s.png" % (filtered_widgets_path, self.cur_event_count)
@@ -918,7 +929,7 @@ class Device(object):
         valid_widgets_info = [(_["signature"] + "[bounds]" + str(_["bounds"])) for _ in valid_widgets]
         dest_filteredinfo_path = "%s/screen_%s.txt" % (filtered_widgets_path, self.cur_event_count)
 
-        with open(dest_filteredinfo_path, "w") as fp:
+        with open(dest_filteredinfo_path, "w", encoding="utf-8") as fp:
             fp.write("======== covered widgets =========" + "\n")
             fp.write("\n".join(covered_widget_info)) 
             fp.write("\n\n" + "========= valid widgets ==========" + "\n")
