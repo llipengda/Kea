@@ -1166,7 +1166,7 @@ class NewPolicy(RandomPolicy):
 
                 self.process_event(event, input_manager)
 
-                self.to_state = self.device.get_current_state()
+                # self.to_state = self.device.get_current_state()
             except KeyboardInterrupt:
                 break
             except InputInterruptedException as e:
@@ -1187,7 +1187,7 @@ class NewPolicy(RandomPolicy):
 
     def process_event(self, event, input_manager):
         if event is not None:
-            self.from_state = self.device.get_current_state()
+            # self.from_state = self.device.get_current_state()
             try:
                 self.device.save_screenshot_for_report(
                     event=event, current_state=self.from_state
@@ -1457,9 +1457,12 @@ class NewPolicy(RandomPolicy):
         return package_names[-1]
 
     def move_if_need(self):
+        package_name = self.app.get_package_name()
+        if self.from_state and package_name in self.from_state.foreground_activity:
+            return
         top = self.get_top()
-        self.logger.info("top activity: %s; out cnt: %s" % (top, self._out_cnt))
-        if (top) != self.app.get_package_name():
+        self.logger.info("top: %s; out cnt: %s" % (top, self._out_cnt))
+        if (top) != package_name:
             self._in_llm = False
             self._llm_cnt = 0
             if (top == 'com.google.android.apps.nexuslauncher'):
@@ -1472,14 +1475,85 @@ class NewPolicy(RandomPolicy):
                 self.device.u2.press("BACK")
                 time.sleep(1)
                 top = self.get_top()
-                if top != self.app.get_package_name():
+                if top != package_name:
                     if (top != 'com.google.android.apps.nexuslauncher'):
                         self.device.adb.shell("am force-stop %s" % top)
                     time.sleep(1)
                     top = self.get_top()
                     self.logger.info("now top activity: %s" % top)
-                    if top != self.app.get_package_name():
+                    if top != package_name:
                         self.device.adb.shell("am force-stop %s" % self.app.get_package_name())
                         self.device.adb.shell(self.app.get_start_intent().get_cmd())
         else:
             self._out_cnt = 0
+
+    def generate_event(self):
+        """
+        generate an event
+        @return:
+        """
+
+        if self.event_count == START_TO_GENERATE_EVENT_IN_POLICY or isinstance(
+                self.last_event, ReInstallAppEvent
+        ):
+            self.run_initializer()
+            self.from_state = self.device.get_current_state()
+        current_state = self.from_state
+        if current_state is None:
+            time.sleep(5)
+            return KeyEvent(name="BACK")
+
+        rules_to_check = self.kea.get_rules_whose_preconditions_are_satisfied()
+        for rule_to_check in rules_to_check:
+            self.statistics_of_rules[str(rule_to_check.function.__name__)][
+                RULE_STATE.PRECONDITION_SATISFIED
+            ] += 1
+
+        if len(rules_to_check) > 0:
+            t = self.time_recoder.get_time_duration()
+            self.time_needed_to_satisfy_precondition.append(t)
+            self.logger.debug(
+                "has rule that matches the precondition and the time duration is "
+                + t
+            )
+            if random.random() < 0.5:
+                self.logger.info("Check property")
+                self.check_rule_whose_precondition_are_satisfied()
+                if self.restart_app_after_check_property:
+                    self.logger.debug("restart app after check property")
+                    return KillAppEvent(app=self.app)
+                return None
+            else:
+                self.logger.info("Don't check the property due to the randomness")
+
+        event = self.generate_random_event_based_on_current_state()
+
+        return event
+
+    def generate_random_event_based_on_current_state(self):
+        """
+        generate an event based on current UTG
+        @return: InputEvent
+        """
+        current_state = self.from_state
+        self.logger.debug("Current state: %s" % current_state.state_str)
+
+        possible_events = current_state.get_possible_input()
+        possible_events.append(KeyEvent(name="BACK"))
+        if not self.disable_rotate:
+            possible_events.append(RotateDevice())
+
+        self._event_trace += EVENT_FLAG_EXPLORE
+
+        event = random.choice(possible_events)
+        if isinstance(event, RotateDevice):
+            # select a rotate event with different direction than last time
+            if self.last_rotate_events == KEY_RotateDeviceToPortraitEvent:
+                self.last_rotate_events = KEY_RotateDeviceToLandscapeEvent
+                event = (
+                    RotateDeviceToLandscapeEvent()
+                )
+            else:
+                self.last_rotate_events = KEY_RotateDeviceToPortraitEvent
+                event = RotateDeviceToPortraitEvent()
+        return event

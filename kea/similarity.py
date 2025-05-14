@@ -117,13 +117,13 @@ class Similarity(object):
                 self.sim_count += 1
                 if self.sim_count >= 3:
                     self.sim_count = 0
-                    if len(self.cache) >= 3:
+                    if len(self.cache) >= 1:
                         self.cache.pop(0)
                     self.cache.append(xml1)
                     return True
                 return False
         self.sim_count = 0
-        if len(self.cache) >= 3:
+        if len(self.cache) >= 1:
             self.cache.pop(0)
         self.cache.append(xml1)
         return False
