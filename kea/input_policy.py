@@ -1468,8 +1468,11 @@ class NewPolicy(RandomPolicy):
         return package_names[-1]
 
     def move_if_need(self):
+        app_name = self.app.get_package_name()
+        if self.from_state is not None and app_name in self.from_state.foreground_activity:
+            return
         top = self.get_top()
-        self.logger.info("top activity: %s; out cnt: %s" % (top, self._out_cnt))
+        self.logger.info("top activity: %s; out cnt: %s; app: %s" % (top, self._out_cnt, self.app.get_package_name()))
         if (top) != self.app.get_package_name():
             self._in_llm = False
             self._llm_cnt = 0
@@ -1481,12 +1484,12 @@ class NewPolicy(RandomPolicy):
                 self._out_cnt = 0
                 self.logger.info("move the app to foreground")
                 self.device.u2.press("BACK")
-                time.sleep(1)
+                time.sleep(0.2)
                 top = self.get_top()
                 if top != self.app.get_package_name():
                     if (top != 'com.google.android.apps.nexuslauncher'):
                         self.device.adb.shell("am force-stop %s" % top)
-                    time.sleep(1)
+                    time.sleep(0.2)
                     top = self.get_top()
                     self.logger.info("now top activity: %s" % top)
                     if top != self.app.get_package_name():
@@ -1982,37 +1985,6 @@ Output Requirements:
     Please return the operation in JSON format only. Do not explain or use code blocks.
     """
         self._messages.append({"role": "user", "content": prompt}) 
-
-    def move_if_need(self):
-        app_name = self.app.get_package_name()
-        if self.from_state is not None and app_name in self.from_state.foreground_activity:
-            return
-        top = self.get_top()
-        self.logger.info("top activity: %s; out cnt: %s; app: %s" % (top, self._out_cnt, self.app.get_package_name()))
-        if (top) != self.app.get_package_name():
-            self._in_llm = False
-            self._llm_cnt = 0
-            if (top == 'com.google.android.apps.nexuslauncher'):
-                self.device.adb.shell(self.app.get_start_intent().get_cmd())
-                return
-            self._out_cnt += 1
-            if self._out_cnt > 2:
-                self._out_cnt = 0
-                self.logger.info("move the app to foreground")
-                self.device.u2.press("BACK")
-                time.sleep(0.2)
-                top = self.get_top()
-                if top != self.app.get_package_name():
-                    if (top != 'com.google.android.apps.nexuslauncher'):
-                        self.device.adb.shell("am force-stop %s" % top)
-                    time.sleep(0.2)
-                    top = self.get_top()
-                    self.logger.info("now top activity: %s" % top)
-                    if top != self.app.get_package_name():
-                        self.device.adb.shell("am force-stop %s" % self.app.get_package_name())
-                        self.device.adb.shell(self.app.get_start_intent().get_cmd())
-        else:
-            self._out_cnt = 0
             
             
 class EnhancePolicy(EnhancedNewPolicy):
