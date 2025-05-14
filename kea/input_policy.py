@@ -66,6 +66,7 @@ POLICY_NONE = "none"
 POLICY_LLM = "llm"
 POLICY_NEW = "new"
 POLICY_ENHANCE = "enhance"
+POLICY_ONLY_ENHANCE = "only_enhance"
 
 load_dotenv()
 
@@ -1791,7 +1792,7 @@ class EnhancedNewPolicy(NewPolicy):
         
         current_state = self.from_state
         # if it is the first time to reach this state, add all possible inputs into the input table
-        if current_state.state_str not in self.input_table or random.random() < 0.5:
+        if current_state.state_str not in self.input_table or len(self.input_table[current_state.state_str]['events']) < 2 or random.random() < 0.5:
             possible_events = current_state.get_possible_input()
             try_cnt = 0
             while len(possible_events) == 0 and try_cnt < 5:
@@ -2012,3 +2013,96 @@ Output Requirements:
                         self.device.adb.shell(self.app.get_start_intent().get_cmd())
         else:
             self._out_cnt = 0
+            
+            
+class EnhancePolicy(EnhancedNewPolicy):
+    def __init__(
+            self,
+            device: "Device",
+            app: "App",
+            kea: "Kea" = None,
+            restart_app_after_check_property=False,
+            number_of_events_that_restart_app=100,
+            clear_and_restart_app_data_after_100_events=False,
+            allow_to_generate_utg=False,
+            output_dir: str = None,
+            decay_factor=0.8,
+            disable_rotate=False,
+    ):
+        super(EnhancePolicy, self).__init__(device, app, kea, output_dir=output_dir,
+                                        restart_app_after_check_property=restart_app_after_check_property,
+                                        number_of_events_that_restart_app=number_of_events_that_restart_app,
+                                        clear_and_restart_app_data_after_100_events=clear_and_restart_app_data_after_100_events,
+                                        allow_to_generate_utg=allow_to_generate_utg, disable_rotate=disable_rotate,decay_factor=decay_factor)
+    
+    def start(self, input_manager: "InputManager"):
+        self.event_count = 0
+        self.input_manager = input_manager
+        while input_manager.enabled and self.event_count < input_manager.event_count:
+            try:
+                if self.device.is_harmonyos == False and hasattr(self.device, "u2"):
+                    self.device.u2.set_fastinput_ime(True)
+
+                self.logger.info("Exploration action count: %d" % self.event_count)
+
+                if self.to_state is not None:
+                    self.from_state = self.to_state
+                else:
+                    self.from_state = self.device.get_current_state()
+                    
+                self.device.from_state = self.from_state
+
+                if self.event_count == 0:
+                    event = KillAppEvent(app=self.app)
+                elif self.event_count == 1:
+                    event = IntentEvent(self.app.get_start_intent())
+                elif self.event_count % self.number_of_events_that_restart_app == 0:
+                    if self.clear_and_reinstall_app:
+                        self.logger.info(
+                            "clear and reinstall app after %s events"
+                            % self.number_of_events_that_restart_app
+                        )
+                        event = ReInstallAppEvent(self.app)
+                    else:
+                        self.logger.info(
+                            "restart app after %s events" % self.number_of_events_that_restart_app
+                        )
+                        event = KillAndRestartAppEvent(app=self.app)
+                    self._generated_tasks.clear()
+                else:
+                    self.move_if_need()
+                    event = self.generate_event()
+                self.process_event(event, input_manager)
+
+            except KeyboardInterrupt:
+                break
+            except InputInterruptedException as e:
+                self.logger.info("stop sending events: %s" % e)
+                self.logger.info("action count: %d" % self.event_count)
+                break
+
+            except RuntimeError as e:
+                self.logger.info("RuntimeError: %s, stop sending events" % e)
+                break
+
+            except Exception as e:
+                self.logger.warning("exception during sending events: %s" % e)
+                import traceback
+                traceback.print_exc()
+
+        if self.allow_to_generate_utg:
+            self.utg.finish()
+        self.logger.info("Exploration action count: %d" % self.event_count)
+        self.logger.info("Exploration finished")
+        bug_report_path = os.path.join(self.device.output_dir, "all_states")
+        generate_report(
+            bug_report_path,
+            self.device.output_dir,
+            self.triggered_bug_information,
+            self.time_needed_to_satisfy_precondition,
+            self.device.cur_event_count,
+            self.time_recoder.get_time_duration(),
+        )
+        self.tear_down()
+        
+        

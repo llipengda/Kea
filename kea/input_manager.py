@@ -15,7 +15,7 @@ from .input_policy import (
     RandomPolicy,
     POLICY_NONE,
     POLICY_LLM,
-    LLMPolicy, POLICY_NEW, NewPolicy
+    LLMPolicy, POLICY_NEW, NewPolicy, POLICY_ONLY_ENHANCE, EnhancePolicy
 )
 
 DEFAULT_POLICY = POLICY_RANDOM
@@ -104,6 +104,18 @@ class InputManager(object):
             input_policy = NewPolicy(device, app, kea=self.kea, number_of_events_that_restart_app = self.number_of_events_that_restart_app, clear_and_restart_app_data_after_100_events=True, allow_to_generate_utg = self.generate_utg, output_dir=self.output_dir, disable_rotate=self.disable_rotate)
         elif self.policy_name == POLICY_ENHANCE:
             input_policy = EnhancedNewPolicy(
+                device,
+                app,
+                kea=self.kea,
+                number_of_events_that_restart_app=self.number_of_events_that_restart_app,
+                clear_and_restart_app_data_after_100_events=True,
+                allow_to_generate_utg=self.generate_utg,
+                output_dir=self.output_dir,
+                decay_factor=self.decay_factor,
+                disable_rotate=self.disable_rotate,
+            )
+        elif self.policy_name == POLICY_ONLY_ENHANCE:
+            input_policy = EnhancePolicy(
                 device,
                 app,
                 kea=self.kea,

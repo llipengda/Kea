@@ -64,7 +64,7 @@ def parse_args():
                         help="The file path to target APK")
     parser.add_argument("-o","--output", action="store", dest="output_dir", default="output",
                         help="directory of output")
-    parser.add_argument("-p","--policy", action="store", dest="policy",choices=["random", "guided", "llm", "new", "enhance"], default=DEFAULT_POLICY,  # tingsu: can we change "mutate" to "guided"?
+    parser.add_argument("-p","--policy", action="store", dest="policy",choices=["random", "guided", "llm", "new", "enhance", "only_enhance"], default=DEFAULT_POLICY,  # tingsu: can we change "mutate" to "guided"?
                         help='Policy used for input event generation. ')
     parser.add_argument("-t", "--timeout", action="store", dest="timeout", default=DEFAULT_TIMEOUT, type=int,
                         help="Timeout in seconds. Default: %d" % DEFAULT_TIMEOUT)
