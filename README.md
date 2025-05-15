@@ -10,7 +10,7 @@
 </div>
 
 
-### Intro ([中文](README_CN.md))
+### Introduction
 
 Lamp is a newly-developed path exploration strategy for Kea, which is a general and practical testing tool based on [property-based testing](https://en.wikipedia.org/wiki/Software_testing#Property_testing) for finding functional (logic) bugs in mobile (GUI) apps.
 
