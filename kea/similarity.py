@@ -109,23 +109,6 @@ class Similarity(object):
         return False
 
     def detect(self, xml1: str, xml2: str):
-        # for i in range(-len(self.cache), 0):
-        #     xml = self.cache[i]
-        #     res = compare_xml_strings(xml1, xml)
-        #     self.logger.info(f"Similarity score({i}): {res}; sim_count: {self.sim_count} ")
-        #     if res > 90:
-        #         self.sim_count += 1
-        #         if self.sim_count >= 3:
-        #             self.sim_count = 0
-        #             if len(self.cache) >= 3:
-        #                 self.cache.pop(0)
-        #             self.cache.append(xml1)
-        #             return True
-        #         return False
-        # self.sim_count = 0
-        # if len(self.cache) >= 3:
-        #     self.cache.pop(0)
-        # self.cache.append(xml1)
         res = compare_xml_strings(xml1, xml2)
         self.logger.info(f"Similarity score: {res}; sim_count: {self.sim_count} ")
         if res > 90:
